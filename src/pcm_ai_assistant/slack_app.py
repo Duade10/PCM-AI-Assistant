@@ -119,6 +119,14 @@ def create_app(config: BotConfig) -> App:
             reply_kwargs["thread_ts"] = event["thread_ts"]
         say(reply, **reply_kwargs)
 
+    @app.event("url_verification")
+    def handle_url_verification(body, ack):  # type: ignore[override]
+        challenge = body.get("challenge")
+        if challenge:
+            ack({"challenge": challenge})
+        else:  # pragma: no cover - defensive branch
+            ack()
+
     @app.event("app_mention")
     def handle_app_mention(event, say):  # type: ignore[override]
         _handle_event(event, say)
