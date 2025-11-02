@@ -100,10 +100,16 @@ def create_app(config: BotConfig) -> App:
     """Create and configure the Slack Bolt application."""
 
     app = App(token=config.slack_bot_token, signing_secret=config.slack_signing_secret)
+    logger.info("Slack Bolt app initialized, verifying authentication")
     auth_response = app.client.auth_test()
     bot_user_id = auth_response["user_id"]
+    logger.info("Authenticated as bot user %s", bot_user_id)
     llm_client = LLMClient(config)
     trigger_phrase = config.normalized_trigger
+    if trigger_phrase:
+        logger.info("Trigger phrase configured: '%s'", trigger_phrase)
+    else:
+        logger.info("No trigger phrase configured; relying on mentions only")
 
     def _collect_thread(event: Dict[str, str]) -> List[Dict[str, str]]:
         """Fetch the full thread history for the given event."""
@@ -111,8 +117,12 @@ def create_app(config: BotConfig) -> App:
         thread_ts = event.get("thread_ts") or event.get("ts")
         channel = event.get("channel")
         if not thread_ts or not channel:
+            logger.debug(
+                "Processing standalone event in channel %s with ts %s", channel, thread_ts
+            )
             return [event]
 
+        logger.debug("Fetching thread %s in channel %s", thread_ts, channel)
         try:
             response = app.client.conversations_replies(channel=channel, ts=thread_ts)
         except SlackApiError as exc:  # pragma: no cover - network failure handling
@@ -123,25 +133,35 @@ def create_app(config: BotConfig) -> App:
 
     def _should_ignore(event: Dict[str, str]) -> bool:
         if event.get("subtype") in {"message_changed", "message_deleted", "message_replied"}:
+            logger.debug("Ignoring event due to subtype %s", event.get("subtype"))
             return True
         if event.get("bot_id") or event.get("user") == bot_user_id:
+            logger.debug("Ignoring bot/self message")
             return True
         return False
 
     def _handle_event(event: Dict[str, str], say) -> None:
+        logger.info(
+            "Handling event in channel %s (ts=%s)",
+            event.get("channel"),
+            event.get("ts"),
+        )
         if _should_ignore(event):
             return
 
         try:
             thread_messages = _collect_thread(event)
+            logger.debug("Collected %d messages from thread", len(thread_messages))
             messages = _build_conversation_messages(
                 thread_messages=thread_messages,
                 bot_user_id=bot_user_id,
                 system_prompt=config.system_prompt,
                 trigger_phrase=trigger_phrase,
             )
+            logger.debug("Prepared %d messages for LLM", len(messages))
             reply = llm_client.generate_reply(messages)
             reply = _format_for_slack(reply)
+            logger.debug("Generated reply with %d characters", len(reply))
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.exception("Failed to process message: %s", exc)
             say(
@@ -153,7 +173,11 @@ def create_app(config: BotConfig) -> App:
         reply_kwargs: Dict[str, str] = {}
         if event.get("thread_ts"):
             reply_kwargs["thread_ts"] = event["thread_ts"]
+            logger.debug("Replying in thread %s", event["thread_ts"])
+        else:
+            logger.debug("Replying in channel %s", event.get("channel"))
         say(reply, **reply_kwargs)
+        logger.info("Reply sent")
 
     @app.event("url_verification")
     def handle_url_verification(body, ack):  # type: ignore[override]
@@ -165,6 +189,7 @@ def create_app(config: BotConfig) -> App:
 
     @app.event("app_mention")
     def handle_app_mention(event, say):  # type: ignore[override]
+        logger.debug("Received app_mention event: %s", event.get("ts"))
         _handle_event(event, say)
 
     if trigger_phrase:
@@ -173,7 +198,9 @@ def create_app(config: BotConfig) -> App:
         @app.message(pattern)
         def handle_trigger(message, say):  # type: ignore[override]
             if f"<@{bot_user_id}>" in (message.get("text") or ""):
+                logger.debug("Skipping trigger because mention present")
                 return
+            logger.debug("Trigger phrase detected in message %s", message.get("ts"))
             _handle_event(message, say)
 
     return app

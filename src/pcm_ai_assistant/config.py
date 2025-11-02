@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Optional
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -39,20 +43,24 @@ def load_config() -> BotConfig:
     slack_signing_secret = os.getenv("SLACK_SIGNING_SECRET")
 
     if not slack_bot_token:
+        LOGGER.error("Missing SLACK_BOT_TOKEN environment variable")
         raise ValueError("SLACK_BOT_TOKEN must be set")
     if not slack_signing_secret:
+        LOGGER.error("Missing SLACK_SIGNING_SECRET environment variable")
         raise ValueError("SLACK_SIGNING_SECRET must be set")
 
     trigger_phrase = os.getenv("TRIGGER_PHRASE", "pcmbot")
     ai_provider = os.getenv("AI_PROVIDER", "openai").lower()
+    LOGGER.debug("Using AI provider: %s", ai_provider)
 
     port_str = os.getenv("PORT", "3000")
     try:
         port = int(port_str)
     except ValueError as exc:
+        LOGGER.error("Invalid PORT value '%s' - must be an integer", port_str)
         raise ValueError("PORT must be an integer") from exc
 
-    return BotConfig(
+    config = BotConfig(
         slack_bot_token=slack_bot_token,
         slack_signing_secret=slack_signing_secret,
         trigger_phrase=trigger_phrase,
@@ -67,3 +75,15 @@ def load_config() -> BotConfig:
         system_prompt=os.getenv("SYSTEM_PROMPT"),
         port=port,
     )
+    LOGGER.info(
+        "Configuration loaded (trigger='%s', ai_provider='%s', port=%s)",
+        trigger_phrase,
+        ai_provider,
+        port,
+    )
+    LOGGER.debug(
+        "OpenAI credentials provided: %s | OpenRouter credentials provided: %s",
+        bool(config.openai_api_key),
+        bool(config.openrouter_api_key),
+    )
+    return config
