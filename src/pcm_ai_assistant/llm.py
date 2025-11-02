@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, Iterable, List
 
 from openai import OpenAI
@@ -9,11 +10,16 @@ from openai import OpenAI
 from .config import BotConfig
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 class LLMClient:
     """Wrapper that abstracts over the supported language model providers."""
 
     def __init__(self, config: BotConfig):
         provider = config.ai_provider.lower()
+
+        LOGGER.info("Initializing LLM client for provider '%s'", provider)
 
         if provider not in {"openai", "openrouter"}:
             raise ValueError(
@@ -25,6 +31,7 @@ class LLMClient:
                 raise ValueError("OPENAI_API_KEY must be set when AI_PROVIDER=openai")
             self._client = OpenAI(api_key=config.openai_api_key)
             self._model = config.openai_model or "gpt-4o-mini"
+            LOGGER.debug("Configured OpenAI model '%s'", self._model)
         else:
             if not config.openrouter_api_key:
                 raise ValueError(
@@ -43,6 +50,9 @@ class LLMClient:
                 default_headers=headers or None,
             )
             self._model = config.openrouter_model or "openrouter/auto"
+            LOGGER.debug(
+                "Configured OpenRouter model '%s' with base URL '%s'", self._model, base_url
+            )
 
     def generate_reply(self, messages: Iterable[Dict[str, str]]) -> str:
         """Generate a reply from the configured large language model."""
@@ -51,6 +61,7 @@ class LLMClient:
         if not payload:
             raise ValueError("No messages provided for completion")
 
+        LOGGER.info("Requesting completion with %d messages", len(payload))
         response = self._client.chat.completions.create(
             model=self._model,
             messages=payload,
@@ -58,4 +69,6 @@ class LLMClient:
         choice = response.choices[0]
         if not choice.message or not choice.message.content:
             raise RuntimeError("Received empty response from language model")
-        return choice.message.content.strip()
+        reply = choice.message.content.strip()
+        LOGGER.debug("Received response with %d characters", len(reply))
+        return reply
