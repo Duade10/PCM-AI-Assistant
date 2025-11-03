@@ -42,6 +42,31 @@ A Slack bot built with Slack Bolt (Python) that replies when mentioned or when a
 
    The application connects to Slack using Socket Mode, so no public HTTP endpoint is required.
 
+## Updating AI provider settings at runtime
+
+You can view or change the active AI provider credentials without redeploying the bot by using the `/pcm-config` Slack command:
+
+1. Run `/pcm-config` to receive the current runtime configuration as a JSON template. The response shows all supported keys:
+
+   - `AI_PROVIDER`
+   - `OPENAI_API_KEY`
+   - `OPENAI_MODEL`
+   - `OPENROUTER_API_KEY`
+   - `OPENROUTER_MODEL`
+   - `OPENROUTER_BASE_URL`
+
+2. Submit updates by sending a JSON object with the `set` sub-command. For example:
+
+   ```
+   /pcm-config set {"AI_PROVIDER": "openrouter", "OPENROUTER_MODEL": "meta-llama/llama-3-70b-instruct"}
+   ```
+
+   Any provided key is persisted immediately and used for the next request. Use `null` or an empty string value to clear a specific override.
+
+3. Run `/pcm-config reset` to remove all runtime overrides and fall back to the values from the environment.
+
+Runtime overrides are stored in `src/runtime_config.json` so the bot retains your changes across restarts.
+
 ## Slack setup tips
 
 - Enable the `app_mention` and `message.channels` events in your Slack app configuration so the bot receives mentions and channel messages.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from html import unescape
@@ -10,7 +11,8 @@ from typing import Dict, Iterable, List
 from slack_bolt import App
 from slack_sdk.errors import SlackApiError
 
-from .config import BotConfig
+from .config import BotConfig, apply_overrides
+from .config_store import RuntimeConfigStore
 from .llm import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -104,8 +106,16 @@ def create_app(config: BotConfig) -> App:
     auth_response = app.client.auth_test()
     bot_user_id = auth_response["user_id"]
     logger.info("Authenticated as bot user %s", bot_user_id)
-    llm_client = LLMClient(config)
-    trigger_phrase = config.normalized_trigger
+    config_store = RuntimeConfigStore()
+    logger.debug("Loaded runtime overrides: %s", config_store.get_overrides())
+
+    base_config = config
+
+    def _current_config() -> BotConfig:
+        return apply_overrides(base_config, config_store.get_overrides())
+
+    active_config = _current_config()
+    trigger_phrase = active_config.normalized_trigger
     if trigger_phrase:
         logger.info("Trigger phrase configured: '%s'", trigger_phrase)
     else:
@@ -152,13 +162,15 @@ def create_app(config: BotConfig) -> App:
         try:
             thread_messages = _collect_thread(event)
             logger.debug("Collected %d messages from thread", len(thread_messages))
+            runtime_config = _current_config()
             messages = _build_conversation_messages(
                 thread_messages=thread_messages,
                 bot_user_id=bot_user_id,
-                system_prompt=config.system_prompt,
-                trigger_phrase=trigger_phrase,
+                system_prompt=runtime_config.system_prompt,
+                trigger_phrase=runtime_config.normalized_trigger or trigger_phrase,
             )
             logger.debug("Prepared %d messages for LLM", len(messages))
+            llm_client = LLMClient(runtime_config)
             reply = llm_client.generate_reply(messages)
             reply = _format_for_slack(reply)
             logger.debug("Generated reply with %d characters", len(reply))
@@ -202,5 +214,81 @@ def create_app(config: BotConfig) -> App:
                 return
             logger.debug("Trigger phrase detected in message %s", message.get("ts"))
             _handle_event(message, say)
+
+    @app.command("/pcm-config")
+    def handle_config_command(ack, respond, command):  # type: ignore[override]
+        ack()
+        text = (command.get("text") or "").strip()
+        logger.info("Received runtime configuration command: %s", text or "show")
+
+        if not text or text.lower() == "show":
+            template = config_store.build_template(_current_config())
+            respond(
+                response_type="ephemeral",
+                text=(
+                    "Here is the current runtime configuration template:\n"
+                    f"```{template}```\n"
+                    "Submit updates with `/pcm-config set {\"AI_PROVIDER\": \"openrouter\"}`.\n"
+                    "Use JSON `null` or an empty string to remove an override, or run"
+                    " `/pcm-config reset` to clear all overrides."
+                ),
+            )
+            return
+
+        if text.lower() == "reset":
+            config_store.clear()
+            respond(
+                response_type="ephemeral",
+                text="All runtime configuration overrides have been cleared.",
+            )
+            return
+
+        if text.lower().startswith("set"):
+            payload = text[3:].strip()
+            if not payload:
+                respond(
+                    response_type="ephemeral",
+                    text=(
+                        "Please provide a JSON object after `set`. Example:\n"
+                        "`/pcm-config set {\"AI_PROVIDER\": \"openrouter\"}`"
+                    ),
+                )
+                return
+
+            try:
+                updates = json.loads(payload)
+            except json.JSONDecodeError as exc:
+                respond(
+                    response_type="ephemeral",
+                    text=f"Unable to parse JSON payload: {exc}",
+                )
+                return
+
+            if not isinstance(updates, dict):
+                respond(
+                    response_type="ephemeral",
+                    text="Configuration updates must be provided as a JSON object.",
+                )
+                return
+
+            overrides = config_store.update(updates)
+            logger.info("Runtime overrides updated: %s", overrides)
+            template = config_store.build_template(_current_config())
+            respond(
+                response_type="ephemeral",
+                text=(
+                    "Configuration updated. Effective runtime settings:\n"
+                    f"```{template}```"
+                ),
+            )
+            return
+
+        respond(
+            response_type="ephemeral",
+            text=(
+                "Unrecognised configuration command. Use `/pcm-config`,"
+                " `/pcm-config set { ... }`, or `/pcm-config reset`."
+            ),
+        )
 
     return app
