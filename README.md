@@ -29,6 +29,7 @@ A Slack bot built with Slack Bolt (Python) that replies when mentioned or when a
 
    - `SLACK_BOT_TOKEN` – the bot user OAuth token.
    - `SLACK_SIGNING_SECRET` – the signing secret from your Slack app.
+   - `SLACK_APP_TOKEN` – the app-level token (starts with `xapp-`) required for Socket Mode.
    - `TRIGGER_PHRASE` – optional keyword that will also trigger the bot (default `pcmbot`).
    - `AI_PROVIDER` – set to `openai` or `openrouter`.
    - Provider specific API keys and model names (`OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, ...).
@@ -39,7 +40,7 @@ A Slack bot built with Slack Bolt (Python) that replies when mentioned or when a
    python app.py
    ```
 
-   By default the bot listens on port `3000`. Override this by setting the `PORT` environment variable in your `.env` file.
+   The application connects to Slack using Socket Mode, so no public HTTP endpoint is required.
 
 ## Slack setup tips
 

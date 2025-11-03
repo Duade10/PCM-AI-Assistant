@@ -6,6 +6,7 @@ import logging
 import os
 
 from slack_bolt import App
+from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from .config import BotConfig, load_config
 from .slack_app import create_app
@@ -48,8 +49,9 @@ def main() -> None:
     LOGGER.info("Starting PCM AI Assistant")
     config = load_config()
     app = create_app(config)
-    LOGGER.info("Launching Slack Bolt server on port %s", config.port)
-    app.start(port=config.port)
+    LOGGER.info("Starting Slack Bolt Socket Mode handler")
+    handler = SocketModeHandler(app, config.slack_app_token)
+    handler.start()
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution

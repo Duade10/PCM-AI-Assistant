@@ -17,6 +17,7 @@ class BotConfig:
 
     slack_bot_token: str
     slack_signing_secret: str
+    slack_app_token: str
     trigger_phrase: str
     ai_provider: str
     openai_api_key: Optional[str]
@@ -27,7 +28,6 @@ class BotConfig:
     openrouter_referer: Optional[str]
     openrouter_title: Optional[str]
     system_prompt: Optional[str]
-    port: int
 
     @property
     def normalized_trigger(self) -> str:
@@ -41,6 +41,7 @@ def load_config() -> BotConfig:
 
     slack_bot_token = os.getenv("SLACK_BOT_TOKEN")
     slack_signing_secret = os.getenv("SLACK_SIGNING_SECRET")
+    slack_app_token = os.getenv("SLACK_APP_TOKEN")
 
     if not slack_bot_token:
         LOGGER.error("Missing SLACK_BOT_TOKEN environment variable")
@@ -48,21 +49,18 @@ def load_config() -> BotConfig:
     if not slack_signing_secret:
         LOGGER.error("Missing SLACK_SIGNING_SECRET environment variable")
         raise ValueError("SLACK_SIGNING_SECRET must be set")
+    if not slack_app_token:
+        LOGGER.error("Missing SLACK_APP_TOKEN environment variable")
+        raise ValueError("SLACK_APP_TOKEN must be set")
 
     trigger_phrase = os.getenv("TRIGGER_PHRASE", "pcmbot")
     ai_provider = os.getenv("AI_PROVIDER", "openai").lower()
     LOGGER.debug("Using AI provider: %s", ai_provider)
 
-    port_str = os.getenv("PORT", "3000")
-    try:
-        port = int(port_str)
-    except ValueError as exc:
-        LOGGER.error("Invalid PORT value '%s' - must be an integer", port_str)
-        raise ValueError("PORT must be an integer") from exc
-
     config = BotConfig(
         slack_bot_token=slack_bot_token,
         slack_signing_secret=slack_signing_secret,
+        slack_app_token=slack_app_token,
         trigger_phrase=trigger_phrase,
         ai_provider=ai_provider,
         openai_api_key=os.getenv("OPENAI_API_KEY"),
@@ -73,13 +71,11 @@ def load_config() -> BotConfig:
         openrouter_referer=os.getenv("OPENROUTER_REFERER"),
         openrouter_title=os.getenv("OPENROUTER_TITLE"),
         system_prompt=os.getenv("SYSTEM_PROMPT"),
-        port=port,
     )
     LOGGER.info(
-        "Configuration loaded (trigger='%s', ai_provider='%s', port=%s)",
+        "Configuration loaded (trigger='%s', ai_provider='%s')",
         trigger_phrase,
         ai_provider,
-        port,
     )
     LOGGER.debug(
         "OpenAI credentials provided: %s | OpenRouter credentials provided: %s",
