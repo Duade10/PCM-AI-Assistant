@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, replace
+from typing import Mapping, Optional
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+# Mapping of environment variable names to BotConfig attributes that may be
+# overridden at runtime through the configuration store.
+OVERRIDABLE_ENV_VARS = {
+    "AI_PROVIDER": "ai_provider",
+    "OPENAI_API_KEY": "openai_api_key",
+    "OPENAI_MODEL": "openai_model",
+    "OPENROUTER_API_KEY": "openrouter_api_key",
+    "OPENROUTER_MODEL": "openrouter_model",
+    "OPENROUTER_BASE_URL": "openrouter_base_url",
+}
 
 
 @dataclass(frozen=True)
@@ -83,3 +95,29 @@ def load_config() -> BotConfig:
         bool(config.openrouter_api_key),
     )
     return config
+
+
+def apply_overrides(config: BotConfig, overrides: Mapping[str, Optional[str]]) -> BotConfig:
+    """Return a copy of ``config`` with supported overrides applied."""
+
+    if not overrides:
+        return config
+
+    updates: dict[str, Optional[str]] = {}
+    for env_key, attribute in OVERRIDABLE_ENV_VARS.items():
+        if env_key not in overrides:
+            continue
+        value = overrides[env_key]
+        if value is None:
+            updates[attribute] = None
+        else:
+            updates[attribute] = str(value)
+
+    if not updates:
+        return config
+
+    if "ai_provider" in updates and updates["ai_provider"]:
+        updates["ai_provider"] = updates["ai_provider"].lower()
+
+    new_config = replace(config, **updates)
+    return new_config
