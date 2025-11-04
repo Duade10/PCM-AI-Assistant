@@ -15,6 +15,14 @@ from .config import BotConfig, apply_overrides
 from .config_store import RuntimeConfigStore
 from .llm import LLMClient
 
+
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a helpful assistant responding within Slack."
+    " Format answers using Slack-compatible Markdown: use *bold*, _italic_, `inline code`,"
+    " and ```code blocks``` as appropriate, render lists with hyphens or numbers,"
+    " and avoid HTML or unsupported formatting."
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,8 +58,13 @@ def _build_conversation_messages(
     """Convert Slack thread messages into the OpenAI chat format."""
 
     messages: List[Dict[str, str]] = []
+    prompt_sections: List[str] = [DEFAULT_SYSTEM_PROMPT]
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt.strip()})
+        system_prompt = system_prompt.strip()
+        if system_prompt:
+            prompt_sections.append(system_prompt)
+    combined_prompt = "\n\n".join(prompt_sections)
+    messages.append({"role": "system", "content": combined_prompt})
 
     for message in thread_messages:
         text = _strip_triggers(message.get("text", ""), bot_user_id, trigger_phrase)
