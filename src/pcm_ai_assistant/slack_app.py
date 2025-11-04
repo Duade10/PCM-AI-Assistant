@@ -32,37 +32,12 @@ def _strip_triggers(text: str, bot_user_id: str, trigger_phrase: str) -> str:
 
 
 def _format_for_slack(raw: str) -> str:
-    """Convert generic markdown into Slack-friendly mrkdwn."""
+    """Return the raw response without Slack-specific formatting."""
 
     if not raw:
         return ""
 
-    text = unescape(str(raw))
-
-    # Remove HTML tags if any slipped through
-    text = re.sub(r"</?[^>]+(>|$)", "", text)
-
-    # Replace Markdown headers (### Title) with bold equivalents
-    text = re.sub(r"^\s{0,3}#{1,6}\s*(.+)$", r"*\\1*", text, flags=re.MULTILINE)
-
-    # Convert bold markers to Slack compatible format
-    text = re.sub(r"\*\*(.+?)\*\*", r"*\\1*", text)
-    text = re.sub(r"__(.+?)__", r"*\\1*", text)
-
-    # Normalize unordered list markers to Slack bullet
-    text = re.sub(r"^[ \t]*([-*+])\s+", "• ", text, flags=re.MULTILINE)
-
-    # Slack does not render fenced code blocks nicely; strip the backticks but keep content
-    def _strip_fence(match):
-        inner = match.group(0)
-        return inner.replace("```", "")
-
-    text = re.sub(r"```[\s\S]*?```", _strip_fence, text)
-
-    # Remove excessive blank lines
-    text = re.sub(r"\n{3,}", "\n\n", text)
-
-    return text.strip()
+    return unescape(str(raw))
 
 
 def _build_conversation_messages(
